@@ -8,6 +8,7 @@ export {
 } from "../../extensions/byteplus/provider-catalog.js";
 export { buildKimiCodingProvider } from "../../extensions/kimi-coding/provider-catalog.js";
 export { buildKilocodeProvider } from "../../extensions/kilocode/provider-catalog.js";
+export { buildDeepInfraStaticProvider } from "../../extensions/deepinfra/provider-catalog.js";
 export {
   buildMinimaxPortalProvider,
   buildMinimaxProvider,

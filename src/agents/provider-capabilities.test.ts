@@ -133,6 +133,12 @@ describe("resolveProviderCapabilities", () => {
     ).toBe(true);
     expect(
       shouldSanitizeGeminiThoughtSignaturesForModel({
+        provider: "deepinfra",
+        modelId: "google/gemini-2.5-pro",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSanitizeGeminiThoughtSignaturesForModel({
         provider: "opencode-go",
         modelId: "google/gemini-2.5-pro-preview",
       }),
