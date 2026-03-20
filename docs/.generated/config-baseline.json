@@ -8403,8 +8403,8 @@
         "channels",
         "network"
       ],
-      "label": "BlueBubbles",
-      "help": "iMessage via the BlueBubbles mac app + REST API.",
+      "label": "@openclaw/bluebubbles",
+      "help": "BlueBubbles channel provider configuration used for Apple messaging bridge integrations. Keep DM policy aligned with your trusted sender model in shared deployments.",
       "hasChildren": true
     },
     {
@@ -9373,8 +9373,8 @@
         "channels",
         "network"
       ],
-      "label": "Discord",
-      "help": "very well supported right now.",
+      "label": "@openclaw/discord",
+      "help": "Discord channel provider configuration for bot auth, retry policy, streaming, thread bindings, and optional voice capabilities. Keep privileged intents and advanced features disabled unless needed.",
       "hasChildren": true
     },
     {
@@ -15285,8 +15285,7 @@
         "channels",
         "network"
       ],
-      "label": "Feishu",
-      "help": "飞书/Lark enterprise messaging with doc/wiki/drive tools.",
+      "label": "@openclaw/feishu",
       "hasChildren": true
     },
     {
@@ -17287,8 +17286,7 @@
         "channels",
         "network"
       ],
-      "label": "Google Chat",
-      "help": "Google Workspace Chat app via HTTP webhooks.",
+      "label": "@openclaw/googlechat",
       "hasChildren": true
     },
     {
@@ -18674,8 +18672,8 @@
         "channels",
         "network"
       ],
-      "label": "iMessage",
-      "help": "this is still a work in progress.",
+      "label": "@openclaw/imessage",
+      "help": "iMessage channel provider configuration for CLI integration and DM access policy handling. Use explicit CLI paths when runtime environments have non-standard binary locations.",
       "hasChildren": true
     },
     {
@@ -20032,8 +20030,8 @@
         "channels",
         "network"
       ],
-      "label": "IRC",
-      "help": "classic IRC networks with DM/channel routing and pairing controls.",
+      "label": "@openclaw/irc",
+      "help": "IRC channel provider configuration and compatibility settings for classic IRC transport workflows. Use this section when bridging legacy chat infrastructure into OpenClaw.",
       "hasChildren": true
     },
     {
@@ -21555,8 +21553,7 @@
         "channels",
         "network"
       ],
-      "label": "LINE",
-      "help": "LINE Messaging API bot for Japan/Taiwan/Thailand markets.",
+      "label": "@openclaw/line",
       "hasChildren": true
     },
     {
@@ -22124,8 +22121,7 @@
         "channels",
         "network"
       ],
-      "label": "Matrix",
-      "help": "open protocol; install the plugin to enable.",
+      "label": "@openclaw/matrix",
       "hasChildren": true
     },
     {
@@ -23182,8 +23178,8 @@
         "channels",
         "network"
       ],
-      "label": "Mattermost",
-      "help": "self-hosted Slack-style chat; install the plugin to enable.",
+      "label": "@openclaw/mattermost",
+      "help": "Mattermost channel provider configuration for bot credentials, base URL, and message trigger modes. Keep mention/trigger rules strict in high-volume team channels.",
       "hasChildren": true
     },
     {
@@ -24313,8 +24309,8 @@
         "channels",
         "network"
       ],
-      "label": "Microsoft Teams",
-      "help": "Bot Framework; enterprise support.",
+      "label": "@openclaw/msteams",
+      "help": "Microsoft Teams channel provider configuration and provider-specific policy toggles. Use this section to isolate Teams behavior from other enterprise chat providers.",
       "hasChildren": true
     },
     {
@@ -25245,8 +25241,7 @@
         "channels",
         "network"
       ],
-      "label": "Nextcloud Talk",
-      "help": "Self-hosted chat via Nextcloud Talk webhook bots.",
+      "label": "@openclaw/nextcloud-talk",
       "hasChildren": true
     },
     {
@@ -26466,8 +26461,7 @@
         "channels",
         "network"
       ],
-      "label": "Nostr",
-      "help": "Decentralized protocol; encrypted DMs via NIP-04.",
+      "label": "@openclaw/nostr",
       "hasChildren": true
     },
     {
@@ -26695,8 +26689,8 @@
         "channels",
         "network"
       ],
-      "label": "Signal",
-      "help": "signal-cli linked device; more setup (David Reagans: \"Hop on Discord.\").",
+      "label": "@openclaw/signal",
+      "help": "Signal channel provider configuration including account identity and DM policy behavior. Keep account mapping explicit so routing remains stable across multi-device setups.",
       "hasChildren": true
     },
     {
@@ -28242,8 +28236,8 @@
         "channels",
         "network"
       ],
-      "label": "Slack",
-      "help": "supported (Socket Mode).",
+      "label": "@openclaw/slack",
+      "help": "Slack channel provider configuration for bot/app tokens, streaming behavior, and DM policy controls. Keep token handling and thread behavior explicit to avoid noisy workspace interactions.",
       "hasChildren": true
     },
     {
@@ -31074,8 +31068,7 @@
         "channels",
         "network"
       ],
-      "label": "Synology Chat",
-      "help": "Connect your Synology NAS Chat to OpenClaw with full agent capabilities.",
+      "label": "@openclaw/synology-chat",
       "hasChildren": true
     },
     {
@@ -31098,8 +31091,8 @@
         "channels",
         "network"
       ],
-      "label": "Telegram",
-      "help": "simplest way to get started — register a bot with @BotFather and get going.",
+      "label": "@openclaw/telegram",
+      "help": "Telegram channel provider configuration including auth tokens, retry behavior, and message rendering controls. Use this section to tune bot behavior for Telegram-specific API semantics.",
       "hasChildren": true
     },
     {
@@ -35262,8 +35255,7 @@
         "channels",
         "network"
       ],
-      "label": "Tlon",
-      "help": "decentralized messaging on Urbit; install the plugin to enable.",
+      "label": "@openclaw/tlon",
       "hasChildren": true
     },
     {
@@ -35701,8 +35693,7 @@
         "channels",
         "network"
       ],
-      "label": "Twitch",
-      "help": "Twitch chat integration",
+      "label": "@openclaw/twitch",
       "hasChildren": true
     },
     {
@@ -36091,8 +36082,8 @@
         "channels",
         "network"
       ],
-      "label": "WhatsApp",
-      "help": "works with your own number; recommend a separate phone + eSIM.",
+      "label": "@openclaw/whatsapp",
+      "help": "WhatsApp channel provider configuration for access policy and message batching behavior. Use this section to tune responsiveness and direct-message routing safety for WhatsApp chats.",
       "hasChildren": true
     },
     {
@@ -37459,8 +37450,7 @@
         "channels",
         "network"
       ],
-      "label": "Zalo",
-      "help": "Vietnam-focused messaging platform with Bot API.",
+      "label": "@openclaw/zalo",
       "hasChildren": true
     },
     {
@@ -38040,8 +38030,7 @@
         "channels",
         "network"
       ],
-      "label": "Zalo Personal",
-      "help": "Zalo personal account via QR code login.",
+      "label": "@openclaw/zalouser",
       "hasChildren": true
     },
     {
@@ -47247,6 +47236,127 @@
     },
     {
       "path": "plugins.entries.copilot-proxy.subagent.allowModelOverride",
+      "kind": "plugin",
+      "type": "boolean",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "access"
+      ],
+      "label": "Allow Plugin Subagent Model Override",
+      "help": "Explicitly allows this plugin to request provider/model overrides in background subagent runs. Keep false unless the plugin is trusted to steer model selection.",
+      "hasChildren": false
+    },
+    {
+      "path": "plugins.entries.deepinfra",
+      "kind": "plugin",
+      "type": "object",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "advanced"
+      ],
+      "label": "@openclaw/deepinfra-provider",
+      "help": "OpenClaw DeepInfra provider plugin (plugin: deepinfra)",
+      "hasChildren": true
+    },
+    {
+      "path": "plugins.entries.deepinfra.config",
+      "kind": "plugin",
+      "type": "object",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "advanced"
+      ],
+      "label": "@openclaw/deepinfra-provider Config",
+      "help": "Plugin-defined config payload for deepinfra.",
+      "hasChildren": false
+    },
+    {
+      "path": "plugins.entries.deepinfra.enabled",
+      "kind": "plugin",
+      "type": "boolean",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "advanced"
+      ],
+      "label": "Enable @openclaw/deepinfra-provider",
+      "hasChildren": false
+    },
+    {
+      "path": "plugins.entries.deepinfra.hooks",
+      "kind": "plugin",
+      "type": "object",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "advanced"
+      ],
+      "label": "Plugin Hook Policy",
+      "help": "Per-plugin typed hook policy controls for core-enforced safety gates. Use this to constrain high-impact hook categories without disabling the entire plugin.",
+      "hasChildren": true
+    },
+    {
+      "path": "plugins.entries.deepinfra.hooks.allowPromptInjection",
+      "kind": "plugin",
+      "type": "boolean",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "access"
+      ],
+      "label": "Allow Prompt Injection Hooks",
+      "help": "Controls whether this plugin may mutate prompts through typed hooks. Set false to block `before_prompt_build` and ignore prompt-mutating fields from legacy `before_agent_start`, while preserving legacy `modelOverride` and `providerOverride` behavior.",
+      "hasChildren": false
+    },
+    {
+      "path": "plugins.entries.deepinfra.subagent",
+      "kind": "plugin",
+      "type": "object",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "advanced"
+      ],
+      "label": "Plugin Subagent Policy",
+      "help": "Per-plugin subagent runtime controls for model override trust and allowlists. Keep this unset unless a plugin must explicitly steer subagent model selection.",
+      "hasChildren": true
+    },
+    {
+      "path": "plugins.entries.deepinfra.subagent.allowedModels",
+      "kind": "plugin",
+      "type": "array",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "access"
+      ],
+      "label": "Plugin Subagent Allowed Models",
+      "help": "Allowed override targets for trusted plugin subagent runs as canonical \"provider/model\" refs. Use \"*\" only when you intentionally allow any model.",
+      "hasChildren": true
+    },
+    {
+      "path": "plugins.entries.deepinfra.subagent.allowedModels.*",
+      "kind": "plugin",
+      "type": "string",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "hasChildren": false
+    },
+    {
+      "path": "plugins.entries.deepinfra.subagent.allowModelOverride",
       "kind": "plugin",
       "type": "boolean",
       "required": false,
