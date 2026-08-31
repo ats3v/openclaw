@@ -48,6 +48,28 @@ describe("DeepInfra provider config", () => {
       expect(result.agents?.defaults?.models?.[fallbackRef]?.alias).toBe("DeepInfra");
     });
 
+    it("claims an unset memory-search embedding provider", () => {
+      const result = applyDeepInfraConfig(emptyCfg, DEEPINFRA_DEFAULT_MODEL_REF);
+      expect(result.memory?.search?.provider).toBe("deepinfra");
+      expect(result.memory?.search?.model).toBeUndefined();
+    });
+
+    it("claims the legacy auto memory-search embedding provider", () => {
+      const cfg: OpenClawConfig = { memory: { search: { provider: "auto", enabled: true } } };
+      const result = applyDeepInfraConfig(cfg, DEEPINFRA_DEFAULT_MODEL_REF);
+      expect(result.memory?.search?.provider).toBe("deepinfra");
+      expect(result.memory?.search?.enabled).toBe(true);
+    });
+
+    it.each(["openai", "none"])(
+      "preserves an explicit memory-search embedding provider (%s)",
+      (provider) => {
+        const cfg: OpenClawConfig = { memory: { search: { provider } } };
+        const result = applyDeepInfraConfig(cfg, DEEPINFRA_DEFAULT_MODEL_REF);
+        expect(result.memory?.search?.provider).toBe(provider);
+      },
+    );
+
     it("preserves an existing alias on the selected model", () => {
       const cfg: OpenClawConfig = {
         agents: {

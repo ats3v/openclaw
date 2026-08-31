@@ -34,6 +34,21 @@ function hasScriptSrcAttribute(openTag: string): boolean {
   );
 }
 
+// CSP source tokens are joined into a header, so a config entry carrying
+// whitespace or separators could smuggle extra directives. Accept only
+// origin-shaped values and drop everything else rather than emitting a
+// malformed policy.
+const FRAME_ANCESTOR_ORIGIN_RE = /^[a-z][a-z0-9+.-]*:\/\/[^\s;,'"]+$/i;
+
+function normalizeFrameAncestorTokens(
+  frameAncestors: readonly string[] | undefined,
+): string[] | undefined {
+  const tokens = (frameAncestors ?? [])
+    .map((entry) => entry.trim())
+    .filter((entry) => FRAME_ANCESTOR_ORIGIN_RE.test(entry));
+  return tokens.length > 0 ? tokens : undefined;
+}
+
 /** Build the CSP header applied to Gateway-served Control UI HTML. */
 export function buildControlUiCspHeader(opts?: {
   inlineScriptHashes?: string[];
@@ -45,6 +60,11 @@ export function buildControlUiCspHeader(opts?: {
    * being enabled so the baseline Control UI CSP stays tight otherwise.
    */
   allowWasm?: boolean;
+  /**
+   * Configured embedder origins (gateway.controlUi.frameAncestors). Empty or
+   * absent keeps the hardened frame-ancestors 'none' default.
+   */
+  frameAncestors?: readonly string[];
 }): string {
   const hashes = opts?.inlineScriptHashes;
   const scriptTokens = ["'self'"];
@@ -80,11 +100,12 @@ export function buildControlUiCspHeader(opts?: {
       // Invalid Host headers do not relax the baseline policy.
     }
   }
+  const frameAncestorTokens = normalizeFrameAncestorTokens(opts?.frameAncestors);
   return [
     "default-src 'self'",
     "base-uri 'none'",
     "object-src 'none'",
-    "frame-ancestors 'none'",
+    `frame-ancestors ${frameAncestorTokens?.join(" ") ?? "'none'"}`,
     // Gateway selection can move to a remote dedicated MCP Apps origin after
     // this document loads. The component still validates the exact endpoint.
     "frame-src 'self' http: https:",

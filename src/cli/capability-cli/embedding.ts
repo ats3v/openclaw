@@ -48,15 +48,33 @@ async function runMemoryEmbeddingCreate(params: {
     commandName: "infer embedding create",
     targetIds: getMemoryEmbeddingCommandSecretTargetIds(),
   });
-  const requestedProvider =
-    normalizeOptionalString(params.provider) || modelRef?.provider || "auto";
   const agentId = resolveCapabilityProviderAgentId(cfg, params.agent, "infer embedding create");
+  const explicitProvider = normalizeOptionalString(params.provider) || modelRef?.provider;
+  let requestedProvider = explicitProvider || "auto";
+  let requestedModel = modelRef?.model ?? "";
+  if (!explicitProvider) {
+    // Bare invocations follow the agent's memory search config, matching
+    // `infer embedding providers`; a raw "auto" resolves to the compiled-in
+    // default provider, which may not even be registered on this install.
+    const memorySearch = resolveMemorySearchConfig(cfg, agentId);
+    const configuredProvider = memorySearch?.provider.trim();
+    if (memorySearch && configuredProvider && configuredProvider !== "none") {
+      requestedProvider = configuredProvider;
+      // Configured models may carry a redundant provider prefix
+      // ("deepinfra/BAAI/bge-m3"); strip a matching prefix once and keep the
+      // remainder verbatim, slashes included.
+      const configuredModel = memorySearch.model.trim();
+      requestedModel = configuredModel.startsWith(`${configuredProvider}/`)
+        ? configuredModel.slice(configuredProvider.length + 1)
+        : configuredModel;
+    }
+  }
   const result = await createEmbeddingProvider({
     config: cfg,
     agentDir: resolveAgentDir(cfg, agentId),
     provider: requestedProvider,
     fallback: "none",
-    model: modelRef?.model ?? "",
+    model: requestedModel,
   });
   if (!result.provider) {
     throw new Error(result.providerUnavailableReason ?? "No embedding provider available.");

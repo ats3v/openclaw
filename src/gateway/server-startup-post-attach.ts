@@ -991,6 +991,15 @@ export async function startGatewaySidecars(params: {
   // These handles schedule later tasks but do not yield after creation. Transfer
   // ownership in the same turn so close cannot seal between creation and publication.
   params.onPostReadySidecars?.(postReadySidecars);
+
+  // Fork-only: hold /ready 503 until first-chat hot paths are warm and the
+  // full model catalog is built (the Control UI picker's models.list is
+  // read-only and cannot build it). Runs after the sidecar-handle transfer
+  // above so this long await cannot sit between creation and publication.
+  await measureStartup(params.startupTrace, "sidecars.deepclaw-warmup", async () => {
+    const { runDeepclawDeepWarmup } = await import("./deepclaw-warmup.js");
+    await runDeepclawDeepWarmup({ cfg: params.cfg, log: params.log });
+  });
   return { pluginServices, postReadySidecars };
 }
 

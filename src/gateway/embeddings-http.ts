@@ -279,8 +279,12 @@ async function createConfiguredEmbeddingProvider(params: {
 
 // Request model overrides are constrained to the configured memory provider so
 // a gateway client cannot select an arbitrary embedding provider by model name.
+// Configured memory models are trusted config and may themselves contain
+// slashes (e.g. deepinfra "BAAI/bge-m3"), so only explicit overrides reject
+// foreign provider prefixes.
 function resolveEmbeddingsTarget(params: {
   requestModel: string;
+  requestModelSource: "override" | "config";
   configuredProvider: EmbeddingProviderRequest;
 }): { provider: EmbeddingProviderRequest; model: string } | { errorMessage: string } {
   const configuredProvider =
@@ -294,18 +298,21 @@ function resolveEmbeddingsTarget(params: {
   }
 
   const provider = normalizeLowercaseStringOrEmpty(raw.slice(0, slash));
-  const model = raw.slice(slash + 1).trim();
-  if (!model) {
-    return { errorMessage: "Unsupported embedding model reference." };
+  if (provider === configuredProvider) {
+    const model = raw.slice(slash + 1).trim();
+    if (!model) {
+      return { errorMessage: "Unsupported embedding model reference." };
+    }
+    return { provider: configuredProvider, model };
   }
 
-  if (provider !== configuredProvider) {
-    return {
-      errorMessage: "This agent does not allow that embedding provider on `/v1/embeddings`.",
-    };
+  if (params.requestModelSource === "config") {
+    return { provider: configuredProvider, model: raw };
   }
 
-  return { provider: configuredProvider, model };
+  return {
+    errorMessage: "This agent does not allow that embedding provider on `/v1/embeddings`.",
+  };
 }
 
 /** Handles OpenAI-compatible embeddings requests for the configured agent memory provider. */
@@ -375,13 +382,11 @@ export async function handleOpenAiEmbeddingsHttpRequest(
   }
   const agentDir = resolveAgentDir(cfg, agentId);
   const memorySearch = resolveMemorySearchConfig(cfg, agentId);
-  const configuredProvider = memorySearch?.provider ?? "openai";
-  const overrideModel =
-    normalizeOptionalString(getHeader(req, "x-openclaw-model")) ||
-    normalizeOptionalString(memorySearch?.model) ||
-    "";
+  const configuredProvider = memorySearch?.provider ?? DEFAULT_MEMORY_EMBEDDING_PROVIDER;
+  const headerModel = normalizeOptionalString(getHeader(req, "x-openclaw-model"));
   const target = resolveEmbeddingsTarget({
-    requestModel: overrideModel,
+    requestModel: headerModel || normalizeOptionalString(memorySearch?.model) || "",
+    requestModelSource: headerModel ? "override" : "config",
     configuredProvider,
   });
   if ("errorMessage" in target) {

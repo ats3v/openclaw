@@ -168,6 +168,20 @@ export type GatewayControlUiConfig = {
   /** Allowed browser origins for Control UI/WebChat websocket connections. */
   allowedOrigins?: string[];
   /**
+   * Origins allowed to embed the Control UI in an iframe (CSP frame-ancestors).
+   * Unset or empty keeps the hardened default: frame-ancestors 'none' plus
+   * X-Frame-Options: DENY.
+   */
+  frameAncestors?: string[];
+  /**
+   * CIDRs whose fresh Control UI/WebChat browser devices are auto-approved
+   * after passing token or password auth, replacing the manual pairing prompt.
+   * For deployments where the gateway port is reachable only through a trusted
+   * ingress (private CIDR + authenticating reverse proxy). Unset keeps every
+   * new browser on manual pairing approval.
+   */
+  deviceAutoApproveCidrs?: string[];
+  /**
    * DANGEROUS: Keep Host-header origin fallback behavior.
    * Supported long-term for deployments that intentionally rely on this policy.
    */

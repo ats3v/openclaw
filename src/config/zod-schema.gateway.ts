@@ -98,6 +98,8 @@ export const GatewayConfigSchema = z
         allowExternalEmbedUrls: z.boolean().optional(),
         automaticallyFetchFavicons: z.boolean().optional(),
         allowedOrigins: z.array(z.string()).optional(),
+        frameAncestors: z.array(z.string()).optional(),
+        deviceAutoApproveCidrs: z.array(z.string()).optional(),
         dangerouslyAllowHostHeaderOriginFallback: z.boolean().optional(),
       })
       .optional(),

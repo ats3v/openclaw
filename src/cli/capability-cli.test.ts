@@ -3755,6 +3755,38 @@ describe("capability cli", () => {
     expect(closeEmbeddingProviderMock).toHaveBeenCalledTimes(1);
   });
 
+  it("follows the memory search config for bare embedding creation", async () => {
+    mocks.resolveMemorySearchConfig.mockReturnValue({
+      provider: "deepinfra",
+      model: "deepinfra/BAAI/bge-m3",
+    } as never);
+
+    await runCapability("embedding", "create", "--text", "hello", "--json");
+
+    expect(firstEmbeddingProviderCall()?.provider).toBe("deepinfra");
+    expect(firstEmbeddingProviderCall()?.model).toBe("BAAI/bge-m3");
+  });
+
+  it("ignores the memory search config when an embedding provider is explicit", async () => {
+    mocks.resolveMemorySearchConfig.mockReturnValue({
+      provider: "deepinfra",
+      model: "deepinfra/BAAI/bge-m3",
+    } as never);
+
+    await runCapability(
+      "embedding",
+      "create",
+      "--model",
+      "openai/text-embedding-3-small",
+      "--text",
+      "hello",
+      "--json",
+    );
+
+    expect(firstEmbeddingProviderCall()?.provider).toBe("openai");
+    expect(firstEmbeddingProviderCall()?.model).toBe("text-embedding-3-small");
+  });
+
   it("closes the embedding provider without masking embedding failure", async () => {
     closeEmbeddingProviderMock.mockRejectedValueOnce(new Error("close failed"));
     mocks.createEmbeddingProvider.mockResolvedValueOnce({

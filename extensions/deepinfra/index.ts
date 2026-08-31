@@ -1,10 +1,15 @@
 // Deepinfra plugin entrypoint registers its OpenClaw integration.
+import type {
+  ProviderResolveDynamicModelContext,
+  ProviderRuntimeModel,
+} from "openclaw/plugin-sdk/plugin-entry";
 import {
   type ProviderCatalogContext,
   type ConfiguredProviderCatalogEntry,
   readConfiguredProviderCatalogEntries,
 } from "openclaw/plugin-sdk/provider-catalog-shared";
 import { defineSingleProviderPluginEntry } from "openclaw/plugin-sdk/provider-entry";
+import type { ModelDefinitionConfig } from "openclaw/plugin-sdk/provider-model-shared";
 import { buildProviderReplayFamilyHooks } from "openclaw/plugin-sdk/provider-model-shared";
 import {
   createOpenRouterWrapper,
@@ -17,6 +22,10 @@ import { buildDeepInfraMediaUnderstandingProvider } from "./media-understanding-
 import { applyDeepInfraConfig } from "./onboard.js";
 import { buildDeepInfraApiKeyCatalog, buildStaticDeepInfraProvider } from "./provider-catalog.js";
 import {
+  buildDeepInfraModelDefinition,
+  DEEPINFRA_BASE_URL,
+  DEEPINFRA_DEFAULT_CONTEXT_WINDOW,
+  DEEPINFRA_DEFAULT_MAX_TOKENS,
   DEEPINFRA_DEFAULT_MODEL_REF,
   discoverDeepInfraModels,
   getDeepInfraSurfaceFallbackCatalog,
@@ -30,6 +39,45 @@ import {
 import { buildDeepInfraVideoGenerationProvider } from "./video-generation-provider.js";
 
 const PROVIDER_ID = "deepinfra";
+
+// Dynamic-model lane (OpenRouter pattern): the live catalog — not the bundled
+// static manifest — is the source of truth for runnable models, so ids that
+// model discovery surfaced (picker, models.list) must also resolve for agent
+// runs instead of dead-ending at "Unknown model". The async hook returns the
+// live-discovered model directly; the sync hook serves the last discovery
+// snapshot and falls back to default capabilities so a freshly added DeepInfra
+// model still runs (a nonexistent id then fails at request time with the
+// provider's own error).
+let dynamicCatalogById: Map<string, ModelDefinitionConfig> | undefined;
+
+function rememberDynamicCatalog(models: ModelDefinitionConfig[]): void {
+  if (models.length > 0) {
+    dynamicCatalogById = new Map(models.map((model) => [model.id, model]));
+  }
+}
+
+function buildDynamicDeepInfraModel(
+  ctx: ProviderResolveDynamicModelContext,
+  discovered?: ModelDefinitionConfig,
+): ProviderRuntimeModel {
+  const model =
+    discovered ??
+    dynamicCatalogById?.get(ctx.modelId) ??
+    buildDeepInfraModelDefinition({ id: ctx.modelId, name: ctx.modelId });
+  return {
+    id: ctx.modelId,
+    name: model.name ?? ctx.modelId,
+    api: "openai-completions",
+    provider: PROVIDER_ID,
+    baseUrl: ctx.providerConfig?.baseUrl?.trim() || DEEPINFRA_BASE_URL,
+    reasoning: model.reasoning ?? false,
+    input: model.input ?? ["text"],
+    ...(model.compat ? { compat: model.compat } : {}),
+    cost: model.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: model.contextWindow ?? DEEPINFRA_DEFAULT_CONTEXT_WINDOW,
+    maxTokens: model.maxTokens ?? DEEPINFRA_DEFAULT_MAX_TOKENS,
+  };
+}
 
 export default defineSingleProviderPluginEntry({
   id: PROVIDER_ID,
@@ -69,6 +117,14 @@ export default defineSingleProviderPluginEntry({
       run: (ctx: ProviderCatalogContext) => buildDeepInfraApiKeyCatalog(ctx),
       staticRun: async () => ({ provider: buildStaticDeepInfraProvider() }),
     },
+    resolveDynamicModel: (ctx) => buildDynamicDeepInfraModel(ctx),
+    prepareDynamicModel: async (ctx) => {
+      const hasApiKey = hasDeepInfraApiKey({ agentDir: ctx.agentDir, config: ctx.config });
+      const models = await discoverDeepInfraModels({ hasApiKey, agentDir: ctx.agentDir });
+      rememberDynamicCatalog(models);
+      const discovered = models.find((model) => model.id === ctx.modelId);
+      return discovered ? buildDynamicDeepInfraModel(ctx, discovered) : undefined;
+    },
     augmentModelCatalog: async ({ config, env, agentDir }) => {
       const configured = readConfiguredProviderCatalogEntries({
         config,
@@ -81,6 +137,9 @@ export default defineSingleProviderPluginEntry({
       const hasApiKey = hasDeepInfraApiKey({ env, agentDir, config });
       const seen = new Set(configured.map((entry) => entry.id));
       const discovered = await discoverDeepInfraModels({ hasApiKey, env, agentDir });
+      // Startup catalog builds (deepclaw warmup) keep the sync dynamic-model
+      // snapshot hot so resolveDynamicModel serves real metadata immediately.
+      rememberDynamicCatalog(discovered);
       const merged: ConfiguredProviderCatalogEntry[] = [...configured];
       for (const model of discovered) {
         if (seen.has(model.id)) {

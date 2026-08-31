@@ -27,8 +27,8 @@ const DEEPINFRA_MODELS_URL = `${DEEPINFRA_BASE_URL}/models?sort_by=openclaw&filt
 const DEEPINFRA_DEFAULT_MODEL_ID = "deepseek-ai/DeepSeek-V4-Flash";
 export const DEEPINFRA_DEFAULT_MODEL_REF = `deepinfra/${DEEPINFRA_DEFAULT_MODEL_ID}`;
 
-const DEEPINFRA_DEFAULT_CONTEXT_WINDOW = 128000;
-const DEEPINFRA_DEFAULT_MAX_TOKENS = 8192;
+export const DEEPINFRA_DEFAULT_CONTEXT_WINDOW = 128000;
+export const DEEPINFRA_DEFAULT_MAX_TOKENS = 8192;
 
 export const DEEPINFRA_MODEL_CATALOG: ModelDefinitionConfig[] = DEEPINFRA_MANIFEST_PROVIDER.models;
 
@@ -362,6 +362,15 @@ function chatSurfaceModelToModelDefinition(model: DeepInfraSurfaceModel): ModelD
   const manifestModel = DEEPINFRA_MODEL_CATALOG.find((entry) => entry.id === model.id);
   const input: Array<"text" | "image"> = model.tags.includes("vlm") ? ["text", "image"] : ["text"];
   const reasoning = model.tags.includes("reasoning") || model.tags.includes("reasoning_effort");
+  // DeepInfra metadata `max_tokens` mirrors `context_length` on every model
+  // (130/130 observed 2026-08-31) while serving enforces a lower, unexposed
+  // completion cap — sending it verbatim 400s ("Range of max_tokens should
+  // be ..."). Honor it only when it is a real cap distinct from the context
+  // length; otherwise prefer the curated manifest value or the default.
+  const liveCompletionCap =
+    model.maxTokens && model.contextWindow && model.maxTokens < model.contextWindow
+      ? model.maxTokens
+      : undefined;
   return buildDeepInfraModelDefinition({
     id: model.id,
     name: model.name,
@@ -369,7 +378,7 @@ function chatSurfaceModelToModelDefinition(model: DeepInfraSurfaceModel): ModelD
     input,
     ...(manifestModel?.compat ? { compat: manifestModel.compat } : {}),
     contextWindow: model.contextWindow ?? DEEPINFRA_DEFAULT_CONTEXT_WINDOW,
-    maxTokens: model.maxTokens ?? DEEPINFRA_DEFAULT_MAX_TOKENS,
+    maxTokens: liveCompletionCap ?? manifestModel?.maxTokens ?? DEEPINFRA_DEFAULT_MAX_TOKENS,
     cost: {
       input: model.pricing.input_tokens ?? 0,
       output: model.pricing.output_tokens ?? 0,

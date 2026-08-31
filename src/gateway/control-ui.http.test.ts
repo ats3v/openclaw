@@ -534,6 +534,68 @@ describe("handleControlUiHttpRequest", () => {
     });
   }
 
+  it("allows configured frame-ancestors and omits X-Frame-Options for embedded consoles", async () => {
+    await withControlUiRoot({
+      fn: async (tmp) => {
+        const { res, end, setHeader } = makeMockHttpResponse();
+        const handled = await handleControlUiHttpRequest(
+          { url: "/", method: "GET", headers: { host: "gateway.example.test" } } as IncomingMessage,
+          res,
+          {
+            root: { kind: "resolved", path: tmp },
+            config: {
+              gateway: {
+                controlUi: { frameAncestors: ["https://console.example.com"] },
+              },
+            } as OpenClawConfig,
+          },
+        );
+        expect(handled).toBe(true);
+        expect(setHeader).not.toHaveBeenCalledWith("X-Frame-Options", "DENY");
+        const csp = setHeader.mock.calls.findLast(
+          (call) => call[0] === "Content-Security-Policy",
+        )?.[1];
+        expect(String(csp)).toContain("frame-ancestors https://console.example.com");
+        expect(String(csp)).not.toContain("frame-ancestors 'none'");
+        expect(responseBody(end)).toContain("<html");
+      },
+    });
+  });
+
+  // The direct index document and the SPA router fallback serve index.html
+  // through separate call sites; both must carry the configured embed origins.
+  it("keeps configured frame-ancestors on SPA fallback documents", async () => {
+    await withControlUiRoot({
+      fn: async (tmp) => {
+        const { res, end, setHeader } = makeMockHttpResponse();
+        const handled = await handleControlUiHttpRequest(
+          {
+            url: "/chat/session-1",
+            method: "GET",
+            headers: { host: "gateway.example.test", accept: "text/html" },
+          } as IncomingMessage,
+          res,
+          {
+            root: { kind: "resolved", path: tmp },
+            config: {
+              gateway: {
+                controlUi: { frameAncestors: ["https://console.example.com"] },
+              },
+            } as OpenClawConfig,
+          },
+        );
+        expect(handled).toBe(true);
+        expect(setHeader).not.toHaveBeenCalledWith("X-Frame-Options", "DENY");
+        const csp = setHeader.mock.calls.findLast(
+          (call) => call[0] === "Content-Security-Policy",
+        )?.[1];
+        expect(String(csp)).toContain("frame-ancestors https://console.example.com");
+        expect(String(csp)).not.toContain("frame-ancestors 'none'");
+        expect(responseBody(end)).toContain("<html");
+      },
+    });
+  });
+
   it("sets security headers for Control UI responses", async () => {
     await withControlUiRoot({
       fn: async (tmp) => {

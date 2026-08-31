@@ -437,6 +437,59 @@ describe("OpenAI-compatible embeddings HTTP API (e2e)", () => {
     }
   });
 
+  it("keeps slashes in config-sourced models whose prefix is not the provider", async () => {
+    // Config-sourced default model ids may contain slashes ("BAAI/bge-m3");
+    // the prefix must not be misparsed as a provider selector.
+    registerEmbeddingProvider({
+      ...openAiAdapter,
+      id: "deepinfra",
+      create: async (options) =>
+        await createEmbeddingProviderMock({
+          provider: options.provider ?? "deepinfra",
+          model: options.model,
+          agentDir: options.agentDir,
+        }),
+    });
+    const configPath = createConfigIO().configPath;
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
+    await fs.writeFile(
+      configPath,
+      `${JSON.stringify({
+        memory: { search: { provider: "deepinfra", model: "BAAI/bge-m3" } },
+      })}\n`,
+      "utf-8",
+    );
+    try {
+      resetConfigRuntimeState();
+
+      const unqualified = await postEmbeddings({ model: "openclaw/default", input: "hello" });
+      await expectDefaultEmbeddingResponse(unqualified);
+      const configCall = latestCreateEmbeddingProviderOptions();
+      expect(configCall.provider).toBe("deepinfra");
+      expect(configCall.model).toBe("BAAI/bge-m3");
+
+      // Explicit overrides still strip a matching provider prefix once and
+      // keep the model remainder intact, slashes included.
+      const qualified = await postEmbeddings(
+        { model: "openclaw/default", input: "hello again" },
+        { "x-openclaw-model": "deepinfra/Qwen/Qwen3-Embedding-8B" },
+      );
+      expect(qualified.status).toBe(200);
+      const overrideCall = latestCreateEmbeddingProviderOptions();
+      expect(overrideCall.provider).toBe("deepinfra");
+      expect(overrideCall.model).toBe("Qwen/Qwen3-Embedding-8B");
+
+      // Foreign provider prefixes in explicit overrides stay rejected.
+      const foreign = await postEmbeddings(
+        { model: "openclaw/default", input: "hello once more" },
+        { "x-openclaw-model": "openai/text-embedding-3-small" },
+      );
+      expect(foreign.status).toBe(400);
+    } finally {
+      resetConfigRuntimeState();
+    }
+  });
+
   it("rejects explicit unknown agent ids", async () => {
     try {
       testState.agentsConfig = { ownership: "explicit", entries: { main: {}, beta: {} } };

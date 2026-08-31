@@ -13,6 +13,7 @@ import {
   type GatewayAuthResult,
   type ResolvedGatewayAuth,
 } from "../../auth.js";
+import { getBearerToken } from "../../http-utils.js";
 import { PROXY_ATTRIBUTION_REQUIRED_REASON } from "../../ingress-attribution.js";
 import { withSerializedRateLimitAttempt } from "../../rate-limit-attempt-serialization.js";
 
@@ -101,8 +102,10 @@ function mapDeviceTokenAuthFailureReason(params: {
 
 function resolveSharedConnectAuth(
   connectAuth: HandshakeConnectAuth | null | undefined,
+  req: IncomingMessage,
 ): { token?: string; password?: string } | undefined {
-  const token = normalizeOptionalString(connectAuth?.token);
+  const frameToken = normalizeOptionalString(connectAuth?.token);
+  const token = frameToken ?? getBearerToken(req);
   const password = normalizeOptionalString(connectAuth?.password);
   if (!token && !password) {
     return undefined;
@@ -135,7 +138,7 @@ export async function resolveConnectAuthState(params: {
   rateLimiter?: AuthRateLimiter;
   clientIp?: string;
 }): Promise<ConnectAuthState> {
-  const sharedConnectAuth = resolveSharedConnectAuth(params.connectAuth);
+  const sharedConnectAuth = resolveSharedConnectAuth(params.connectAuth, params.req);
   const sharedAuthProvided = Boolean(sharedConnectAuth);
   const bootstrapTokenCandidate = params.hasDeviceIdentity
     ? normalizeOptionalString(params.connectAuth?.bootstrapToken)

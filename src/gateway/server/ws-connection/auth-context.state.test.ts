@@ -78,6 +78,118 @@ describe("resolveConnectAuthState", () => {
     expect(rateLimiter.recordFailure).not.toHaveBeenCalled();
   });
 
+  type HeaderOnlyCaseParams = {
+    connectAuth: { token?: string; password?: string; deviceToken?: string } | null | undefined;
+    authorization?: string;
+    resolvedToken?: string;
+    mode?: "token" | "password";
+    password?: string;
+    hasDeviceIdentity?: boolean;
+  };
+
+  async function runConnectAuth(params: HeaderOnlyCaseParams) {
+    const resolvedAuth =
+      params.mode === "password"
+        ? ({
+            mode: "password",
+            password: params.password ?? "pw",
+            allowTailscale: false,
+          } satisfies ResolvedGatewayAuth)
+        : ({
+            mode: "token",
+            token: params.resolvedToken ?? "correct-secret",
+            allowTailscale: false,
+          } satisfies ResolvedGatewayAuth);
+    const headers: Record<string, string> = {};
+    if (params.authorization !== undefined) {
+      headers.authorization = params.authorization;
+    }
+    return resolveConnectAuthState({
+      resolvedAuth,
+      connectAuth: params.connectAuth,
+      hasDeviceIdentity: params.hasDeviceIdentity ?? false,
+      req: {
+        headers,
+        socket: { remoteAddress: "203.0.113.20" },
+      } as never,
+      trustedProxies: [],
+      allowRealIpFallback: false,
+      rateLimiter: createLimiter(),
+      clientIp: "203.0.113.20",
+    });
+  }
+
+  it("token-mode: accepts a Bearer Authorization header when the frame omits a token", async () => {
+    const state = await runConnectAuth({
+      connectAuth: {},
+      authorization: "Bearer correct-secret",
+    });
+    expect(state.authOk).toBe(true);
+    expect(state.authMethod).toBe("token");
+  });
+
+  it("token-mode: frame token wins when it matches (header ignored)", async () => {
+    const state = await runConnectAuth({
+      connectAuth: { token: "correct-secret" },
+      authorization: "Bearer bad",
+    });
+    expect(state.authOk).toBe(true);
+    expect(state.authMethod).toBe("token");
+  });
+
+  it("token-mode: frame token wins on mismatch even when the header carries a valid token", async () => {
+    const state = await runConnectAuth({
+      connectAuth: { token: "wrong" },
+      authorization: "Bearer correct-secret",
+    });
+    expect(state.authOk).toBe(false);
+    expect(state.authResult.reason).toBe("token_mismatch");
+  });
+
+  it.each([
+    ["no Authorization header", undefined],
+    ["Basic scheme", "Basic something"],
+    ["Bearer with no token", "Bearer"],
+    ["Bearer with whitespace-only token", "Bearer    "],
+  ])("token-mode: malformed header ignored — %s", async (_label, authorization) => {
+    const state = await runConnectAuth({
+      connectAuth: {},
+      authorization,
+    });
+    expect(state.authOk).toBe(false);
+    expect(state.authResult.reason).toBe("token_missing");
+  });
+
+  it("token-mode: Bearer scheme is case-insensitive", async () => {
+    const state = await runConnectAuth({
+      connectAuth: {},
+      authorization: "bearer correct-secret",
+    });
+    expect(state.authOk).toBe(true);
+    expect(state.authMethod).toBe("token");
+  });
+
+  it("password-mode: Authorization header is ignored", async () => {
+    const state = await runConnectAuth({
+      mode: "password",
+      password: "pw",
+      connectAuth: { password: "pw" },
+      authorization: "Bearer ignored-value",
+    });
+    expect(state.authOk).toBe(true);
+    expect(state.authMethod).toBe("password");
+  });
+
+  it("device-token fallback: HTTP header does not populate deviceTokenCandidate", async () => {
+    const state = await runConnectAuth({
+      connectAuth: {},
+      authorization: "Bearer correct-secret",
+      hasDeviceIdentity: true,
+    });
+    expect(state.deviceTokenCandidate).toBeUndefined();
+    expect(state.deviceTokenCandidateSource).toBeUndefined();
+  });
+
   it("does not apply shared-secret lockouts to explicit device-token-only handshakes", async () => {
     const rateLimiter = createLimiter({ allowed: false });
 

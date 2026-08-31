@@ -177,9 +177,20 @@ function controlUiAvatarResolutionMeta(resolved: AgentAvatarResolution | null): 
   };
 }
 
-function applyControlUiSecurityHeaders(res: ServerResponse) {
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Content-Security-Policy", buildControlUiCspHeader());
+// gateway.controlUi.frameAncestors opts the Control UI into iframe embedding
+// by a trusted host console; unset keeps frame-ancestors 'none' + XFO DENY.
+function resolveControlUiFrameAncestors(config?: OpenClawConfig): string[] | undefined {
+  const configured = config?.gateway?.controlUi?.frameAncestors;
+  return Array.isArray(configured) && configured.length > 0 ? configured : undefined;
+}
+
+function applyControlUiSecurityHeaders(res: ServerResponse, frameAncestors?: readonly string[]) {
+  if (!frameAncestors?.length) {
+    // XFO has no origin-allowlist form; when embedding is enabled the CSP
+    // frame-ancestors directive below is the sole (modern-browser) gate.
+    res.setHeader("X-Frame-Options", "DENY");
+  }
+  res.setHeader("Content-Security-Policy", buildControlUiCspHeader({ frameAncestors }));
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
   // Browser Talk is owned by this same-origin Control UI document. Keep camera
@@ -670,6 +681,7 @@ async function serveResolvedIndexHtml(
   basePath?: string,
   allowWasm?: boolean,
   environment?: ControlUiEnvironment,
+  frameAncestors?: readonly string[],
 ) {
   const normalizedBasePath = normalizeControlUiBasePath(basePath);
   const withBasePath = rewriteControlUiIndexHtmlAssetHrefs(body, normalizedBasePath);
@@ -694,6 +706,7 @@ async function serveResolvedIndexHtml(
       inlineScriptHashes: hashes,
       allowWasm,
       portalHost: req.headers.host,
+      frameAncestors,
     }),
   );
   res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -825,6 +838,7 @@ export async function handleControlUiHttpRequest(
   // WASM relaxation whenever the terminal is enabled (the default) and stays
   // strict once operators opt out with gateway.terminal.enabled: false.
   const terminalEnabled = opts?.terminalEnabled ?? isTerminalConfigEnabled(opts?.config);
+  const frameAncestors = resolveControlUiFrameAncestors(opts?.config);
   const route = classifyControlUiRequest({
     basePath,
     pathname,
@@ -836,19 +850,19 @@ export async function handleControlUiHttpRequest(
     return false;
   }
   if (route.kind === "not-found") {
-    applyControlUiSecurityHeaders(res);
+    applyControlUiSecurityHeaders(res, frameAncestors);
     respondControlUiNotFound(res);
     return true;
   }
   if (route.kind === "redirect") {
-    applyControlUiSecurityHeaders(res);
+    applyControlUiSecurityHeaders(res, frameAncestors);
     res.statusCode = 302;
     res.setHeader("Location", route.location);
     res.end();
     return true;
   }
 
-  applyControlUiSecurityHeaders(res);
+  applyControlUiSecurityHeaders(res, frameAncestors);
 
   if (matchesControlUiBootstrapConfigPath(pathname, basePath)) {
     let pluginFrameGrants: readonly ControlUiPluginFrameGrantAck[] = [];
@@ -1051,6 +1065,7 @@ export async function handleControlUiHttpRequest(
         basePath,
         terminalEnabled,
         opts?.config?.gateway?.controlUi?.environment,
+        frameAncestors,
       );
       return true;
     }
@@ -1137,6 +1152,7 @@ export async function handleControlUiHttpRequest(
       basePath,
       terminalEnabled,
       opts?.config?.gateway?.controlUi?.environment,
+      frameAncestors,
     );
     return true;
   }

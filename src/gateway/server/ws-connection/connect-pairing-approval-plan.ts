@@ -12,6 +12,7 @@ import {
   resolveBootstrapProfileScopesForRoles,
   type DeviceBootstrapProfile,
 } from "../../../shared/device-bootstrap-profile.js";
+import { shouldAutoApproveControlUiBrowserPairing } from "../../control-ui-pairing-auto-approve.js";
 import { shouldAutoApproveNodePairingFromTrustedCidrs } from "../../node-pairing-auto-approve.js";
 import {
   isControlUiOwnerBootstrapProfile,
@@ -127,6 +128,21 @@ export async function resolvePairingApprovalPlan(params: {
     reportedClientIp: params.reportedClientIp,
     autoApproveCidrs: configSnapshot.gateway?.nodes?.pairing?.autoApproveCidrs,
   });
+  // DeepInfra fork: fresh Control UI/WebChat browsers arriving from
+  // gateway.controlUi.deviceAutoApproveCidrs skip the manual pairing prompt.
+  // The lane is exactly as strong as the ingress that owns those CIDRs; see
+  // shouldAutoApproveControlUiBrowserPairing for the eligibility floor.
+  const allowTrustedCidrBrowserPairing = shouldAutoApproveControlUiBrowserPairing({
+    existingPairedDevice: Boolean(existingPairedDevice),
+    role,
+    reason,
+    isBrowserOperatorUi,
+    isWebchat,
+    authMethod,
+    reportedClientIpSource: params.reportedClientIpSource,
+    reportedClientIp: params.reportedClientIp,
+    autoApproveCidrs: configSnapshot.gateway?.controlUi?.deviceAutoApproveCidrs,
+  });
   const trustedProxyAutoApproveConfig =
     configSnapshot.gateway?.auth?.trustedProxy?.deviceAutoApprove;
   const trustedProxyUser = authResult.user?.trim();
@@ -232,6 +248,7 @@ export async function resolvePairingApprovalPlan(params: {
     silent:
       allowSilentLocalPairing ||
       allowSilentTrustedCidrsNodePairing ||
+      allowTrustedCidrBrowserPairing ||
       allowSetupCodeHandoffBootstrapPairing ||
       allowControlUiOperatorBootstrapPairing,
     allowSilentLocalPairing,
