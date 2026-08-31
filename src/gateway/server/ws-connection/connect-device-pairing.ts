@@ -317,7 +317,11 @@ export async function authorizeGatewayConnectDevice(
                 !isConnectAuthorizationCurrent() ||
                 pending.deviceId !== device.id ||
                 pending.publicKey !== devicePublicKey ||
-                (plan.localApproval === "trusted-cidr" && !isScopelessNodePairingRequest(pending))
+                // Only the node CIDR lane must stay scopeless; the operator browser
+                // CIDR lane (controlUi.deviceAutoApproveCidrs) carries UI scopes.
+                (plan.localApproval === "trusted-cidr" &&
+                  state.role === "node" &&
+                  !isScopelessNodePairingRequest(pending))
               ) {
                 return false;
               }

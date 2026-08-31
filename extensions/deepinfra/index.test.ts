@@ -5,8 +5,9 @@ import {
 } from "openclaw/plugin-sdk/plugin-test-runtime";
 import { clearLiveCatalogCacheForTests } from "openclaw/plugin-sdk/provider-catalog-live-runtime";
 import type { ProviderCatalogContext } from "openclaw/plugin-sdk/provider-catalog-shared";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import deepinfraPlugin from "./index.js";
+import { DEEPINFRA_MODEL_CATALOG } from "./provider-static-catalog.js";
 
 const DEEPINFRA_MODELS_URL =
   "https://api.deepinfra.com/v1/openai/models?sort_by=openclaw&filter=with_meta";
@@ -61,6 +62,7 @@ function mockDiscoveryFetch(id = "profile/live-model") {
 
 afterEach(() => {
   clearLiveCatalogCacheForTests();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -222,5 +224,105 @@ describe("deepinfra isCacheTtlEligible", () => {
         modelId: "zai-org/GLM-5.1",
       }),
     ).toBe(false);
+  });
+});
+
+// Regression: live-catalog ids offered by the picker/models.list must also
+// resolve for agent runs; before the dynamic hooks existed every non-static
+// model failed with "Unknown model" (picker offered 142, only ~12 ran).
+describe("deepinfra dynamic model resolution", () => {
+  // No key => discovery serves the manifest; keeps a developer's real key out of the run.
+  beforeEach(() => {
+    vi.stubEnv("DEEPINFRA_API_KEY", "");
+  });
+
+  it("prepares discovered catalog models for async run resolution", async () => {
+    const provider = await registerSingleProviderPlugin(deepinfraPlugin);
+    const manifestModel = DEEPINFRA_MODEL_CATALOG[0]!;
+    const context = {
+      provider: "deepinfra",
+      modelId: manifestModel.id,
+      agentDir: "/tmp/openclaw-agent",
+      modelRegistry: { find: vi.fn(() => null) },
+    } as never;
+
+    const model = await provider.prepareDynamicModel?.(context);
+
+    expect(model).toMatchObject({
+      id: manifestModel.id,
+      provider: "deepinfra",
+      api: "openai-completions",
+      baseUrl: "https://api.deepinfra.com/v1/openai",
+    });
+  });
+
+  it("resolves ids missing from discovery to a default-capability model instead of dead-ending", async () => {
+    const provider = await registerSingleProviderPlugin(deepinfraPlugin);
+    const context = {
+      provider: "deepinfra",
+      modelId: "synthetic/Fresh-Model-Next",
+      agentDir: "/tmp/openclaw-agent",
+      modelRegistry: { find: vi.fn(() => null) },
+    } as never;
+
+    expect(await provider.prepareDynamicModel?.(context)).toBeUndefined();
+    const model = provider.resolveDynamicModel?.(context);
+
+    expect(model).toMatchObject({
+      id: "synthetic/Fresh-Model-Next",
+      provider: "deepinfra",
+      api: "openai-completions",
+      baseUrl: "https://api.deepinfra.com/v1/openai",
+      input: ["text"],
+      contextWindow: 128000,
+      maxTokens: 8192,
+    });
+  });
+
+  it("keeps the deepseek thinking format on dynamic deepseek-ai models", async () => {
+    const provider = await registerSingleProviderPlugin(deepinfraPlugin);
+    const model = provider.resolveDynamicModel?.({
+      provider: "deepinfra",
+      modelId: "deepseek-ai/Synthetic-Reasoner",
+      agentDir: "/tmp/openclaw-agent",
+      modelRegistry: { find: vi.fn(() => null) },
+    } as never);
+
+    expect(model?.compat).toMatchObject({ thinkingFormat: "deepseek" });
+  });
+
+  it("honors a configured provider baseUrl for dynamic models", async () => {
+    const provider = await registerSingleProviderPlugin(deepinfraPlugin);
+    const model = provider.resolveDynamicModel?.({
+      provider: "deepinfra",
+      modelId: "synthetic/model",
+      agentDir: "/tmp/openclaw-agent",
+      modelRegistry: { find: vi.fn(() => null) },
+      providerConfig: { baseUrl: "https://proxy.example.invalid/v1/openai" },
+    } as never);
+
+    expect(model?.baseUrl).toBe("https://proxy.example.invalid/v1/openai");
+  });
+
+  it("serves discovered metadata to sync resolution after a prepare pass", async () => {
+    const provider = await registerSingleProviderPlugin(deepinfraPlugin);
+    const manifestModel = DEEPINFRA_MODEL_CATALOG[0]!;
+    const context = {
+      provider: "deepinfra",
+      modelId: manifestModel.id,
+      agentDir: "/tmp/openclaw-agent",
+      modelRegistry: { find: vi.fn(() => null) },
+    } as never;
+
+    await provider.prepareDynamicModel?.(context);
+    const model = provider.resolveDynamicModel?.(context);
+
+    expect(model).toMatchObject({
+      id: manifestModel.id,
+      name: manifestModel.name ?? manifestModel.id,
+    });
+    if (typeof manifestModel.contextWindow === "number") {
+      expect(model?.contextWindow).toBe(manifestModel.contextWindow);
+    }
   });
 });

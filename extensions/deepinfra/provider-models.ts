@@ -24,8 +24,8 @@ const log = createSubsystemLogger("deepinfra-models");
 const DEEPINFRA_MODELS_URL = `${DEEPINFRA_BASE_URL}/models?sort_by=openclaw&filter=with_meta`;
 const DEEPINFRA_PRICING_URL = "https://api.deepinfra.com/models/list";
 
-const DEEPINFRA_DEFAULT_CONTEXT_WINDOW = 128000;
-const DEEPINFRA_DEFAULT_MAX_TOKENS = 8192;
+export const DEEPINFRA_DEFAULT_CONTEXT_WINDOW = 128000;
+export const DEEPINFRA_DEFAULT_MAX_TOKENS = 8192;
 
 const DISCOVERY_TIMEOUT_MS = 5000;
 const DISCOVERY_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -281,6 +281,15 @@ function chatSurfaceModelToModelDefinition(
   const manifestModel = DEEPINFRA_MODEL_CATALOG.find((entry) => entry.id === model.id);
   const input: Array<"text" | "image"> = model.tags.includes("vlm") ? ["text", "image"] : ["text"];
   const reasoning = model.tags.includes("reasoning") || model.tags.includes("reasoning_effort");
+  // DeepInfra metadata `max_tokens` mirrors `context_length` on every model
+  // (130/130 observed 2026-08-31) while serving enforces a lower, unexposed
+  // completion cap — sending it verbatim 400s ("Range of max_tokens should
+  // be ..."). Honor it only when it is a real cap distinct from the context
+  // length; otherwise prefer the curated manifest value or the default.
+  const liveCompletionCap =
+    model.maxTokens && model.contextWindow && model.maxTokens < model.contextWindow
+      ? model.maxTokens
+      : undefined;
   return {
     id: model.id,
     name: model.name,
@@ -288,7 +297,7 @@ function chatSurfaceModelToModelDefinition(
     input,
     ...(manifestModel?.compat ? { compat: manifestModel.compat } : {}),
     contextWindow: model.contextWindow ?? DEEPINFRA_DEFAULT_CONTEXT_WINDOW,
-    maxTokens: model.maxTokens ?? DEEPINFRA_DEFAULT_MAX_TOKENS,
+    maxTokens: liveCompletionCap ?? manifestModel?.maxTokens ?? DEEPINFRA_DEFAULT_MAX_TOKENS,
   };
 }
 
@@ -420,10 +429,22 @@ export async function discoverDeepInfraModels(
     );
   }
   // Runtime requires zeros for unknown prices; this is not evidence of free billing.
-  return models.map((model) =>
+  const definitions = models.map((model) =>
     buildDeepInfraModelDefinition({
       ...model,
       cost: prices?.get(model.id) ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     }),
   );
+  lastDiscoveredById = new Map(definitions.map((model) => [model.id, model]));
+  return definitions;
+}
+
+// DeepInfra fork: last live discovery result, read by the sync
+// resolveDynamicModel hook (index.ts) so picker ids resolve for agent runs with
+// real metadata and no network round-trip. Catalog builds and prepareDynamicModel
+// both refresh it; manifest-only fallbacks add nothing the static catalog lacks.
+let lastDiscoveredById: Map<string, ModelDefinitionConfig> | undefined;
+
+export function findDiscoveredDeepInfraModel(modelId: string): ModelDefinitionConfig | undefined {
+  return lastDiscoveredById?.get(modelId);
 }

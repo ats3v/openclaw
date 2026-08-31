@@ -151,6 +151,8 @@ export const GatewayConfigSchema = z
         /** Optional max-width for grouped Control UI chat messages (default: min(900px, 68%)). */
         /** Allowed browser origins for Control UI/WebChat websocket connections. */
         allowedOrigins: z.array(z.string()).optional(),
+        frameAncestors: z.array(z.string()).optional(),
+        deviceAutoApproveCidrs: z.array(z.string()).optional(),
         /**
          * DANGEROUS: Keep Host-header origin fallback behavior.
          * Supported long-term for deployments that intentionally rely on this policy.
