@@ -11,7 +11,9 @@ import {
   GATEWAY_CLIENT_MODES,
   GATEWAY_CLIENT_NAMES,
 } from "../../../packages/gateway-protocol/src/client-info.js";
+import type { ModelChoice } from "../../../packages/gateway-protocol/src/schema/model-catalog.js";
 import { DEFAULT_PROVIDER } from "../../agents/defaults.js";
+import type { ModelCatalogEntry } from "../../agents/model-catalog.types.js";
 import {
   normalizeThinkLevel,
   THINKING_LEVELS_HELP,
@@ -36,13 +38,47 @@ const HEIC_MODEL_RUN_MIMES = new Set([
   "image/heif-sequence",
 ]);
 
+/** Catalog fields the Gateway publishes for every row; readiness and picker-only facts stay out. */
+function toInspectionCatalogEntry(model: ModelChoice): ModelCatalogEntry {
+  return {
+    id: model.id,
+    name: model.name,
+    provider: model.provider,
+    ...(model.alias ? { alias: model.alias } : {}),
+    ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
+    ...(model.contextWindows ? { contextWindows: model.contextWindows } : {}),
+    ...(model.contextWindowDefault ? { contextWindowDefault: model.contextWindowDefault } : {}),
+    ...(model.contextTokens !== undefined ? { contextTokens: model.contextTokens } : {}),
+    ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}),
+    ...(model.input ? { input: model.input } : {}),
+  };
+}
+
+/**
+ * A fresh CLI process runs no provider discovery, so its read-only build omits every
+ * refreshable provider row (for DeepInfra: the whole inventory, default model included).
+ * A running Gateway publishes the complete catalog; read it the same way `models list` does.
+ */
 async function loadModelCatalogForInspection(cfg: OpenClawConfig, rawAgentId?: string) {
   const { resolveCapabilityProviderAgentId } = await import("./shared.js");
-  const { readPreparedModelCatalog } = await import("../../agents/prepared-model-catalog.js");
   const agentId =
     rawAgentId === undefined ? undefined : resolveCapabilityProviderAgentId(cfg, rawAgentId);
-  const prepared = await readPreparedModelCatalog({ config: cfg, agentId, readOnly: true });
-  return prepared.toSorted(
+  const { readGatewayModelsList, selectModelsCatalogGateway } =
+    await import("../../commands/models/list.gateway-catalog.js");
+  const gateway = await selectModelsCatalogGateway(cfg);
+  let entries: ModelCatalogEntry[];
+  if (gateway) {
+    const result = await readGatewayModelsList({
+      config: cfg,
+      gateway,
+      params: { ...(agentId ? { agentId } : {}), view: "all", includeDetails: true },
+    });
+    entries = result.models.map(toInspectionCatalogEntry);
+  } else {
+    const { readPreparedModelCatalog } = await import("../../agents/prepared-model-catalog.js");
+    entries = await readPreparedModelCatalog({ config: cfg, agentId, readOnly: true });
+  }
+  return entries.toSorted(
     (a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id),
   );
 }

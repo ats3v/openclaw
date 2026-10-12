@@ -14,6 +14,26 @@ describe("buildControlUiCspHeader", () => {
     expect(csp).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com");
   });
 
+  it("emits configured frame-ancestors origins instead of 'none'", () => {
+    const csp = buildControlUiCspHeader({
+      frameAncestors: ["https://console.example.com", "https://stage.example.com"],
+    });
+    expect(csp).toContain("frame-ancestors https://console.example.com https://stage.example.com");
+    expect(csp).not.toContain("frame-ancestors 'none'");
+  });
+
+  it("drops malformed frame-ancestors entries and keeps the hardened default when none survive", () => {
+    expect(
+      buildControlUiCspHeader({
+        frameAncestors: ["https://ok.example.com", "not-an-origin", "https://x; script-src *"],
+      }),
+    ).toContain("frame-ancestors https://ok.example.com;");
+    expect(buildControlUiCspHeader({ frameAncestors: [] })).toContain("frame-ancestors 'none'");
+    expect(buildControlUiCspHeader({ frameAncestors: ["  ", "javascript:alert(1)"] })).toContain(
+      "frame-ancestors 'none'",
+    );
+  });
+
   it("allows Google Fonts for style and font loading", () => {
     const csp = buildControlUiCspHeader();
     expect(csp).toContain("https://fonts.googleapis.com");

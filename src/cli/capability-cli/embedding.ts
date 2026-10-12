@@ -26,19 +26,38 @@ async function runMemoryEmbeddingCreate(params: {
   const { createEmbeddingProvider } =
     await import("../../plugin-sdk/memory-core-bundled-runtime.js");
   const modelRef = requireProviderModelOverride(params.model);
-  const { cfg, agentDir } = await resolveLocalCapabilityAgent({
+  const { cfg, agentId, agentDir } = await resolveLocalCapabilityAgent({
     commandName: "infer embedding create",
     targetIds: getMemoryEmbeddingCommandSecretTargetIds(),
     agent: params.agent,
   });
-  const requestedProvider =
-    normalizeOptionalString(params.provider) || modelRef?.provider || "auto";
+  const explicitProvider = normalizeOptionalString(params.provider) || modelRef?.provider;
+  let requestedProvider = explicitProvider || "auto";
+  let requestedModel = modelRef?.model ?? "";
+  if (!explicitProvider) {
+    // Bare invocations follow the agent's memory search config, matching
+    // `infer embedding providers`; a raw "auto" resolves to the compiled-in
+    // default provider, which may not even be registered on this install.
+    const { resolveMemorySearchConfig } = await import("../../agents/memory-search.js");
+    const memorySearch = resolveMemorySearchConfig(cfg, agentId);
+    const configuredProvider = memorySearch?.provider.trim();
+    if (memorySearch && configuredProvider && configuredProvider !== "none") {
+      requestedProvider = configuredProvider;
+      // Configured models may carry a redundant provider prefix
+      // ("deepinfra/BAAI/bge-m3"); strip a matching prefix once and keep the
+      // remainder verbatim, slashes included.
+      const configuredModel = memorySearch.model.trim();
+      requestedModel = configuredModel.startsWith(`${configuredProvider}/`)
+        ? configuredModel.slice(configuredProvider.length + 1)
+        : configuredModel;
+    }
+  }
   const result = await createEmbeddingProvider({
     config: cfg,
     agentDir,
     provider: requestedProvider,
     fallback: "none",
-    model: modelRef?.model ?? "",
+    model: requestedModel,
   });
   if (!result.provider) {
     throw new Error(result.providerUnavailableReason ?? "No embedding provider available.");

@@ -84,6 +84,10 @@ const mocks = vi.hoisted(() => ({
   loadModelCatalog: vi.fn<
     typeof import("../agents/prepared-model-catalog.js").readPreparedModelCatalog
   >(async () => []),
+  isImplicitLocalGatewayTarget: vi.fn(async () => true),
+  readActiveGatewayLockIdentity: vi.fn<
+    typeof import("../infra/gateway-lock.js").readActiveGatewayLockIdentity
+  >(async () => undefined),
   releaseSimpleCompletion: vi.fn(),
   acquireSimpleCompletionModelForAgent: vi.fn(async () => ({
     async [Symbol.asyncDispose]() {
@@ -375,7 +379,13 @@ vi.mock("../commands/models/list.status-command.js", () => ({
 
 vi.mock("../gateway/call.js", () => ({
   callGateway: mocks.callGateway as typeof import("../gateway/call.js").callGateway,
+  isImplicitLocalGatewayTarget: mocks.isImplicitLocalGatewayTarget,
   randomIdempotencyKey: () => "run-1",
+}));
+
+vi.mock("../infra/gateway-lock.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../infra/gateway-lock.js")>()),
+  readActiveGatewayLockIdentity: mocks.readActiveGatewayLockIdentity,
 }));
 
 vi.mock("../media-understanding/runtime.js", () => ({
@@ -595,6 +605,8 @@ describe("capability cli", () => {
     mocks.loadModelCatalog
       .mockReset()
       .mockResolvedValue([{ id: "gpt-5.4", provider: "openai", name: "GPT-5.4" }] as never);
+    mocks.isImplicitLocalGatewayTarget.mockReset().mockResolvedValue(true);
+    mocks.readActiveGatewayLockIdentity.mockReset().mockResolvedValue(undefined);
     mocks.loadAuthProfileStoreForRuntime
       .mockReset()
       .mockReturnValue({ version: 1, profiles: {}, order: {} });
@@ -904,6 +916,110 @@ describe("capability cli", () => {
 
     await runCapability("model", "list");
     expect(mocks.runtime.log).toHaveBeenCalledWith("No results found.");
+  });
+
+  describe("with a running local Gateway", () => {
+    const flash = {
+      id: "deepseek-ai/DeepSeek-V4-Flash",
+      name: "DeepSeek V4 Flash",
+      provider: "deepinfra",
+      alias: "DeepInfra",
+      contextWindow: 1_048_576,
+      reasoning: true,
+      input: ["text"],
+    };
+    const glm = {
+      id: "zai-org/GLM-5.3-Flash",
+      name: "GLM 5.3 Flash",
+      provider: "deepinfra",
+      contextWindow: 202_752,
+      reasoning: true,
+      input: ["text"],
+    };
+
+    beforeEach(() => {
+      mocks.readActiveGatewayLockIdentity.mockResolvedValue({
+        pid: 123,
+        port: 19001,
+        createdAt: "fixture",
+      });
+      mocks.callGateway.mockImplementation((async ({ method }: { method: string }) =>
+        method === "models.list"
+          ? {
+              // Gateway rows carry readiness and picker facts that inspection does not publish.
+              models: [
+                { ...glm, tags: ["catalog"], available: true, supportsTools: true },
+                { ...flash, tags: ["default"], local: false },
+              ],
+            }
+          : {}) as never);
+    });
+
+    it("lists the Gateway's published catalog instead of the local read-only build", async () => {
+      await runCapability("model", "list", "--json");
+
+      expect(mocks.loadModelCatalog).not.toHaveBeenCalled();
+      expect(mocks.callGateway).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          method: "models.list",
+          localPortOverride: 19001,
+          requiredCapabilities: ["published-model-catalog"],
+          params: { view: "all", includeDetails: true },
+        }),
+      );
+      expect(mocks.runtime.writeJson).toHaveBeenCalledWith([flash, glm]);
+    });
+
+    it("inspects a Gateway-discovered model by provider/id", async () => {
+      await runCapability(
+        "model",
+        "inspect",
+        "--model",
+        "deepinfra/zai-org/GLM-5.3-Flash",
+        "--json",
+      );
+
+      expect(mocks.loadModelCatalog).not.toHaveBeenCalled();
+      expect(mocks.runtime.writeJson).toHaveBeenCalledWith(glm);
+    });
+
+    it("groups Gateway models for infer model providers under the requested agent", async () => {
+      await runCapability("model", "providers", "--json");
+
+      expect(mocks.callGateway).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          params: { agentId: "main", view: "all", includeDetails: true },
+        }),
+      );
+      expect(mocks.runtime.writeJson).toHaveBeenCalledWith([
+        expect.objectContaining({
+          provider: "deepinfra",
+          count: 2,
+          defaults: ["deepseek-ai/DeepSeek-V4-Flash", "zai-org/GLM-5.3-Flash"],
+        }),
+      ]);
+    });
+
+    it("uses a remote Gateway target without reading the local lock owner", async () => {
+      mocks.isImplicitLocalGatewayTarget.mockResolvedValue(false);
+
+      await runCapability("model", "list", "--json");
+
+      expect(mocks.readActiveGatewayLockIdentity).not.toHaveBeenCalled();
+      expect(mocks.callGateway).toHaveBeenCalledExactlyOnceWith(
+        expect.not.objectContaining({ localPortOverride: expect.anything() }),
+      );
+      expect(mocks.runtime.writeJson).toHaveBeenCalledWith([flash, glm]);
+    });
+
+    it("lets a selected Gateway own its failure instead of substituting a local inventory", async () => {
+      mocks.callGateway.mockRejectedValue(new Error("gateway closed"));
+
+      await expect(runCapability("model", "list", "--json")).rejects.toThrow("exit 1");
+
+      expect(mocks.loadModelCatalog).not.toHaveBeenCalled();
+      expect(mocks.runtime.writeJson).not.toHaveBeenCalled();
+    });
   });
 
   it.each([
@@ -3719,6 +3835,38 @@ describe("capability cli", () => {
     });
     expect(mocks.embedBatch).toHaveBeenCalledWith(["hello", "world"], { inputType: "document" });
     expect(closeEmbeddingProviderMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("follows the memory search config for bare embedding creation", async () => {
+    mocks.resolveMemorySearchConfig.mockReturnValue({
+      provider: "deepinfra",
+      model: "deepinfra/BAAI/bge-m3",
+    } as never);
+
+    await runCapability("embedding", "create", "--text", "hello", "--json");
+
+    expect(firstEmbeddingProviderCall()?.provider).toBe("deepinfra");
+    expect(firstEmbeddingProviderCall()?.model).toBe("BAAI/bge-m3");
+  });
+
+  it("ignores the memory search config when an embedding provider is explicit", async () => {
+    mocks.resolveMemorySearchConfig.mockReturnValue({
+      provider: "deepinfra",
+      model: "deepinfra/BAAI/bge-m3",
+    } as never);
+
+    await runCapability(
+      "embedding",
+      "create",
+      "--model",
+      "openai/text-embedding-3-small",
+      "--text",
+      "hello",
+      "--json",
+    );
+
+    expect(firstEmbeddingProviderCall()?.provider).toBe("openai");
+    expect(firstEmbeddingProviderCall()?.model).toBe("text-embedding-3-small");
   });
 
   it("closes the embedding provider without masking embedding failure", async () => {

@@ -178,6 +178,13 @@ function controlUiAvatarResolutionMeta(resolved: AgentAvatarResolution | null): 
   };
 }
 
+// gateway.controlUi.frameAncestors opts the Control UI into iframe embedding
+// by a trusted host console; unset keeps frame-ancestors 'none' + XFO DENY.
+function resolveControlUiFrameAncestors(config?: OpenClawConfig): string[] | undefined {
+  const configured = config?.gateway?.controlUi?.frameAncestors;
+  return Array.isArray(configured) && configured.length > 0 ? configured : undefined;
+}
+
 function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -759,6 +766,7 @@ async function serveResolvedIndexHtml(
   allowWasm?: boolean,
   environment?: ControlUiEnvironment,
   buildId?: string,
+  frameAncestors?: readonly string[],
 ) {
   const normalizedBasePath = normalizeControlUiBasePath(basePath);
   const withBasePath = rewriteControlUiIndexHtmlAssetHrefs(body, normalizedBasePath, buildId);
@@ -792,6 +800,7 @@ async function serveResolvedIndexHtml(
       inlineScriptHashes: hashes,
       allowWasm,
       portalHost: req.headers.host,
+      frameAncestors,
     }),
   );
   res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -858,6 +867,7 @@ export async function handleControlUiHttpRequest(
   // WASM relaxation whenever the terminal is enabled (the default) and stays
   // strict once operators opt out with gateway.terminal.enabled: false.
   const terminalEnabled = opts?.terminalEnabled ?? isTerminalConfigEnabled(opts?.config);
+  const frameAncestors = resolveControlUiFrameAncestors(opts?.config);
   const route = classifyControlUiRequest({
     basePath,
     pathname,
@@ -869,19 +879,19 @@ export async function handleControlUiHttpRequest(
     return false;
   }
   if (route.kind === "not-found") {
-    applyControlUiSecurityHeaders(res);
+    applyControlUiSecurityHeaders(res, frameAncestors);
     respondControlUiNotFound(res);
     return true;
   }
   if (route.kind === "redirect") {
-    applyControlUiSecurityHeaders(res);
+    applyControlUiSecurityHeaders(res, frameAncestors);
     res.statusCode = 302;
     res.setHeader("Location", route.location);
     res.end();
     return true;
   }
 
-  applyControlUiSecurityHeaders(res);
+  applyControlUiSecurityHeaders(res, frameAncestors);
 
   if (isControlUiSharePath(pathname, basePath) && pathname !== `${basePath}/share/card.png`) {
     serveControlUiShareDocument(req, res, url, basePath, resolveGatewayPublicOrigin(opts?.config));
@@ -1100,6 +1110,7 @@ export async function handleControlUiHttpRequest(
         terminalEnabled,
         opts?.config?.gateway?.controlUi?.environment,
         publicAssetBuildId,
+        frameAncestors,
       );
       return;
     }

@@ -5,15 +5,13 @@ import type {
   ModelsListParams,
   ModelsListResult,
 } from "../../../packages/gateway-protocol/src/schema/model-catalog.js";
-import { GATEWAY_SERVER_CAPS } from "../../../packages/gateway-protocol/src/server-capabilities.js";
 import { sanitizeTerminalText } from "../../../packages/terminal-core/src/safe-text.js";
 import { modelKey } from "../../agents/model-ref-shared.js";
 import { ExpectedCliError } from "../../cli/failure-output.js";
 import { requestExitAfterOneShotOutput } from "../../cli/one-shot-exit.js";
 import { getRuntimeConfig } from "../../config/config.js";
-import { callGateway, isImplicitLocalGatewayTarget } from "../../gateway/call.js";
-import { readActiveGatewayLockIdentity } from "../../infra/gateway-lock.js";
 import type { RuntimeEnv } from "../../runtime.js";
+import { readGatewayModelsList, selectModelsCatalogGateway } from "./list.gateway-catalog.js";
 import { printModelTable } from "./list.table.js";
 import type { ModelRow } from "./list.types.js";
 import { loadModelsConfigWithSource } from "./load-config.js";
@@ -63,23 +61,14 @@ export async function modelsListCommand(
     includeDetails: true,
     ...(opts.refresh ? { refresh: true } : {}),
   };
-  const localTarget = await isImplicitLocalGatewayTarget({ config: cfg });
-  const explicitPort = Boolean(process.env.OPENCLAW_GATEWAY_PORT?.trim());
-  const gatewayOwner =
-    localTarget && !explicitPort
-      ? await readActiveGatewayLockIdentity({ requireInspection: true })
-      : undefined;
+  const gateway = await selectModelsCatalogGateway(cfg);
   let result: ModelsListResult;
-  if (!localTarget || explicitPort || gatewayOwner) {
-    // Once selected, this Gateway owns both success and failure. Never replace a failed
-    // connection or unsupported capability with a different local inventory.
-    result = await callGateway<ModelsListResult>({
+  if (gateway) {
+    result = await readGatewayModelsList({
       config: cfg,
-      method: "models.list",
-      ...(opts.refresh ? { timeoutMs: MODEL_CATALOG_REFRESH_TIMEOUT_MS } : {}),
-      requiredCapabilities: [GATEWAY_SERVER_CAPS.PUBLISHED_MODEL_CATALOG],
-      ...(gatewayOwner ? { localPortOverride: gatewayOwner.port } : {}),
+      gateway,
       params,
+      ...(opts.refresh ? { timeoutMs: MODEL_CATALOG_REFRESH_TIMEOUT_MS } : {}),
     });
   } else {
     runtime.error(

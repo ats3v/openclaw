@@ -12,6 +12,7 @@ import {
   resolveBootstrapProfileScopesForRoles,
   type DeviceBootstrapProfile,
 } from "../../../shared/device-bootstrap-profile.js";
+import { shouldAutoApproveControlUiBrowserPairing } from "../../control-ui-pairing-auto-approve.js";
 import { shouldAutoApproveNodePairingFromTrustedCidrs } from "../../node-pairing-auto-approve.js";
 import {
   isControlUiOwnerBootstrapProfile,
@@ -101,7 +102,15 @@ export function resolveLocalPairingApproval(
   >,
 ): PairingApprovalPlan["localApproval"] {
   const { reason, existingPairedDevice, state, configSnapshot, scopes } = params;
-  const { role, isControlUi, isWebchat, isNativeAppUi, authMethod, pairingLocality } = state;
+  const {
+    role,
+    isControlUi,
+    isBrowserOperatorUi,
+    isWebchat,
+    isNativeAppUi,
+    authMethod,
+    pairingLocality,
+  } = state;
   const allowSilentLocalPairing =
     !(existingPairedDevice && role !== "operator") &&
     shouldAllowSilentLocalPairing({
@@ -117,17 +126,38 @@ export function resolveLocalPairingApproval(
   if (allowSilentLocalPairing) {
     return "silent";
   }
-  return shouldAutoApproveNodePairingFromTrustedCidrs({
+  if (
+    shouldAutoApproveNodePairingFromTrustedCidrs({
+      existingPairedDevice: Boolean(existingPairedDevice),
+      role,
+      reason,
+      scopes,
+      hasBrowserOriginHeader: params.hasBrowserOriginHeader,
+      isControlUi,
+      isWebchat,
+      reportedClientIpSource: params.reportedClientIpSource,
+      reportedClientIp: params.reportedClientIp,
+      autoApproveCidrs: configSnapshot.gateway?.nodes?.pairing?.autoApproveCidrs,
+    })
+  ) {
+    return "trusted-cidr";
+  }
+  // DeepInfra fork: fresh Control UI/WebChat browsers arriving from
+  // gateway.controlUi.deviceAutoApproveCidrs skip the manual pairing prompt.
+  // The lane is exactly as strong as the ingress that owns those CIDRs; see
+  // shouldAutoApproveControlUiBrowserPairing for the eligibility floor. It
+  // shares "trusted-cidr" provenance (cross-host, never auto-pruned) with the
+  // node lane; the two are disjoint by role (node vs operator).
+  return shouldAutoApproveControlUiBrowserPairing({
     existingPairedDevice: Boolean(existingPairedDevice),
     role,
     reason,
-    scopes,
-    hasBrowserOriginHeader: params.hasBrowserOriginHeader,
-    isControlUi,
+    isBrowserOperatorUi,
     isWebchat,
+    authMethod,
     reportedClientIpSource: params.reportedClientIpSource,
     reportedClientIp: params.reportedClientIp,
-    autoApproveCidrs: configSnapshot.gateway?.nodes?.pairing?.autoApproveCidrs,
+    autoApproveCidrs: configSnapshot.gateway?.controlUi?.deviceAutoApproveCidrs,
   })
     ? "trusted-cidr"
     : null;
