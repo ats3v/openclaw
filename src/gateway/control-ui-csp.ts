@@ -62,6 +62,30 @@ export function computeInlineScriptHashes(html: string): string[] {
   return hashes;
 }
 
+// CSP source tokens are joined into a header, so a config entry carrying
+// whitespace or separators could smuggle extra directives. Accept only
+// origin-shaped values and drop everything else rather than emitting a
+// malformed policy.
+const FRAME_ANCESTOR_ORIGIN_RE = /^[a-z][a-z0-9+.-]*:\/\/[^\s;,'"]+$/i;
+
+/**
+ * A remote ingress grant owns its validated framing policy. Every other request
+ * follows gateway.controlUi.frameAncestors, the operator's embedder allowlist;
+ * unset or empty keeps frame-ancestors 'none' plus X-Frame-Options: DENY.
+ */
+export function resolveControlUiFrameAncestors(
+  remote: RemoteControlUiIngressContext | undefined,
+  configured: readonly string[] | undefined,
+): readonly string[] | undefined {
+  if (remote) {
+    return remote.frameAncestors;
+  }
+  const tokens = (configured ?? [])
+    .map((entry) => entry.trim())
+    .filter((entry) => FRAME_ANCESTOR_ORIGIN_RE.test(entry));
+  return tokens.length > 0 ? tokens : undefined;
+}
+
 /** Build the CSP header applied to Gateway-served Control UI HTML. */
 export function buildControlUiCspHeader(opts?: {
   inlineScriptHashes?: string[];
@@ -128,18 +152,17 @@ export function buildControlUiCspHeader(opts?: {
 export function applyControlUiSecurityHeaders(
   res: ServerResponse,
   remote?: RemoteControlUiIngressContext,
+  configuredFrameAncestors?: readonly string[],
 ) {
   remote?.signal.throwIfAborted();
   remote?.assertCurrent();
-  if (remote?.frameAncestors.length) {
+  const frameAncestors = resolveControlUiFrameAncestors(remote, configuredFrameAncestors);
+  if (frameAncestors?.length) {
     res.removeHeader("X-Frame-Options");
   } else {
     res.setHeader("X-Frame-Options", "DENY");
   }
-  res.setHeader(
-    "Content-Security-Policy",
-    buildControlUiCspHeader({ frameAncestors: remote?.frameAncestors }),
-  );
+  res.setHeader("Content-Security-Policy", buildControlUiCspHeader({ frameAncestors }));
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
   // Browser Talk is owned by this same-origin Control UI document. Keep camera
