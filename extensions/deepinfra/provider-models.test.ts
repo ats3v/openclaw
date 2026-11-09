@@ -165,6 +165,42 @@ describe("discoverDeepInfraModels", () => {
     }
   });
 
+  // DeepInfra metadata max_tokens mirrors context_length on every live model
+  // today; sending it verbatim as the completion cap 400s at request time
+  // ("Range of max_tokens should be [1, N]"). The mirror value must fall back
+  // to the manifest/default cap while a genuinely lower value stays honored.
+  it("ignores max_tokens that merely mirrors context_length", async () => {
+    const rows = [
+      makeAgentModelEntry({
+        id: "unlisted/mirrored-cap",
+        metadata: {
+          context_length: 256000,
+          max_tokens: 256000,
+          pricing: {},
+          tags: ["chat"],
+        },
+      }),
+      makeAgentModelEntry({
+        id: "unlisted/real-cap",
+        metadata: {
+          context_length: 256000,
+          max_tokens: 131072,
+          pricing: {},
+          tags: ["chat"],
+        },
+      }),
+    ];
+    const mockFetch = mockProjectionFetch(() => Response.json({ data: rows }));
+
+    await withFetchPathTest(mockFetch, { DEEPINFRA_API_KEY: "sk-test" }, async () => {
+      const models = await discoverDeepInfraModels();
+      expect(models.slice(0, rows.length)).toMatchObject([
+        { id: "unlisted/mirrored-cap", contextWindow: 256000, maxTokens: 8192 },
+        { id: "unlisted/real-cap", contextWindow: 256000, maxTokens: 131072 },
+      ]);
+    });
+  });
+
   it("ignores untagged entries and prototype tags, and deduplicates tags and ids", async () => {
     const mockFetch = mockProjectionFetch(
       vi.fn().mockResolvedValue(
