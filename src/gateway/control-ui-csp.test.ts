@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { buildControlUiCspHeader, computeInlineScriptHashes } from "./control-ui-csp.js";
+import {
+  buildControlUiCspHeader,
+  computeInlineScriptHashes,
+  resolveControlUiFrameAncestors,
+} from "./control-ui-csp.js";
+import { createRemoteControlUiIngressTestContext } from "./remote-control-ui.test-support.js";
 
 describe("buildControlUiCspHeader", () => {
   it("restricts execution and resource loading to the baseline security policy", () => {
@@ -86,5 +91,34 @@ describe("computeInlineScriptHashes", () => {
 
   it("skips empty inline scripts", () => {
     expect(computeInlineScriptHashes("<script></script>")).toStrictEqual([]);
+  });
+});
+
+describe("resolveControlUiFrameAncestors", () => {
+  it("keeps only origin-shaped configured embedder entries", () => {
+    expect(
+      resolveControlUiFrameAncestors(undefined, [
+        " https://ok.example.com ",
+        "not-an-origin",
+        "https://x; script-src *",
+      ]),
+    ).toEqual(["https://ok.example.com"]);
+    expect(resolveControlUiFrameAncestors(undefined, [])).toBeUndefined();
+    expect(
+      resolveControlUiFrameAncestors(undefined, ["  ", "javascript:alert(1)"]),
+    ).toBeUndefined();
+  });
+
+  it("lets a remote ingress grant own its framing policy over the configured allowlist", () => {
+    const configured = ["https://console.example.com"];
+    expect(
+      resolveControlUiFrameAncestors(createRemoteControlUiIngressTestContext(), configured),
+    ).toEqual(["https://host.example.test", "codex-sandbox:"]);
+    expect(
+      resolveControlUiFrameAncestors(
+        createRemoteControlUiIngressTestContext({ frameAncestors: [] }),
+        configured,
+      ),
+    ).toEqual([]);
   });
 });

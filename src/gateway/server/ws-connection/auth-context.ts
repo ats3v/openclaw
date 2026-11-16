@@ -16,6 +16,7 @@ import {
   type GatewayAuthResult,
   type ResolvedGatewayAuth,
 } from "../../auth.js";
+import { getBearerToken } from "../../http-utils.js";
 import { PROXY_ATTRIBUTION_REQUIRED_REASON } from "../../ingress-attribution.js";
 import { withSerializedRateLimitAttempt } from "../../rate-limit-attempt-serialization.js";
 
@@ -63,7 +64,10 @@ export async function resolveConnectAuthState(params: {
   rateLimiter?: AuthRateLimiter;
   clientIp?: string;
 }): Promise<ConnectAuthState> {
-  const token = normalizeOptionalString(params.connectAuth?.token);
+  const frameToken = normalizeOptionalString(params.connectAuth?.token);
+  // DeepInfra fork: proxy/iframe clients carry the shared token as a Bearer
+  // Authorization header on the upgrade request instead of in the connect frame.
+  const token = frameToken ?? getBearerToken(params.req);
   const password = normalizeOptionalString(params.connectAuth?.password);
   const sharedConnectAuth = token || password ? { token, password } : undefined;
   const bootstrapTokenCandidate = params.hasDeviceIdentity
@@ -72,7 +76,10 @@ export async function resolveConnectAuthState(params: {
   const explicitDeviceToken = params.hasDeviceIdentity
     ? normalizeOptionalString(params.connectAuth?.deviceToken)
     : undefined;
-  const deviceCredential = params.hasDeviceIdentity ? (explicitDeviceToken ?? token) : undefined;
+  // The device-token fallback stays frame-only; an HTTP header never names a device credential.
+  const deviceCredential = params.hasDeviceIdentity
+    ? (explicitDeviceToken ?? frameToken)
+    : undefined;
   const deferRateLimitFailure = Boolean(deviceCredential);
 
   const authResult: GatewayAuthResult = await authorizeWsControlUiGatewayConnect({

@@ -328,7 +328,11 @@ export async function authorizeGatewayConnectDevice(
                 // an unrelated operator request carried by the same pending row.
                 (role === "node" &&
                   (pending.role !== role || pending.roles?.some((entry) => entry !== role))) ||
-                (plan.localApproval === "trusted-cidr" && !isScopelessNodePairingRequest(pending))
+                // Only the node CIDR lane must stay scopeless; the operator browser
+                // CIDR lane (controlUi.deviceAutoApproveCidrs) carries UI scopes.
+                (plan.localApproval === "trusted-cidr" &&
+                  role === "node" &&
+                  !isScopelessNodePairingRequest(pending))
               ) {
                 return false;
               }
